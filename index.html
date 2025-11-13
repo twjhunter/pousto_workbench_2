@@ -162,7 +162,7 @@
   
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      // 核心参数（与之前一致）
+      // 核心参数
       const minorStep = 2;                  
       const majorStep = 10;                 
       const majorLines = [130, 120, 110, 100, 90, 80, 70, 60]; 
@@ -177,7 +177,7 @@
       const totalHeightRange = majorLines[0] - majorLines[majorLines.length - 1];
       const totalMinorTicks = totalHeightRange / minorStep;
       
-      // DOM元素（与之前一致）
+      // DOM元素
       const heightArrow = document.getElementById('height-arrow');
       const workbench = document.getElementById('workbench');
       const legLeft = document.getElementById('leg-left');
@@ -187,23 +187,22 @@
       const rulerContainer = document.getElementById('ruler-mark-container');
       const btnUp = document.getElementById('btn-up');
       const btnDown = document.getElementById('btn-down');
-      const btnSet = document.getElementById('btn-m'); // 明确绑定M键元素
+      const btnSet = document.getElementById('btn-m');
       const buttons = document.querySelectorAll('[data-btn]');
       
       const savedHeights = {1: null, 2: null, 3: null, 4: null};
       let upperLimitArrow = null;
       let lowerLimitArrow = null;
       
-      // 状态变量（与之前一致）
+      // 状态变量
       let isMoving = false;
       let movementInterval = null;
       let isSetting = false;
-      let setKeyDownTime = 0; 
       let isLongPressing = false; 
       let lastDirection = null;
-      let longPressTimer = null; // 新增：长按计时器（统一管理鼠标和触摸）
+      let longPressTimer = null;
       
-      // 计算/生成刻度等核心函数（与之前一致）
+      // 核心计算函数
       function calculatePosition(height) {
         const rulerHeight = rulerContainer.offsetHeight;
         const availableHeight = rulerHeight * 0.8;
@@ -391,11 +390,10 @@
         }, 1000);
       }
       
-      // 统一的长按开始逻辑（同时支持鼠标和触摸）
+      // 统一长按逻辑
       function startLongPress() {
         if (isSetting && !isMoving) {
           isLongPressing = true;
-          // 2秒后检查是否仍在长按
           longPressTimer = setTimeout(() => {
             if (isLongPressing && isSetting) {
               if (lastDirection === 'up') setUpperLimit();
@@ -405,16 +403,14 @@
         }
       }
       
-      // 统一的长按结束逻辑（同时支持鼠标和触摸）
       function endLongPress() {
         isLongPressing = false;
-        clearTimeout(longPressTimer); // 清除未执行的计时器
+        clearTimeout(longPressTimer);
       }
       
       function bindEvents() {
-        // 上下键事件（与之前一致）
-        const handleUpStart = (e) => {
-          e.stopPropagation();
+        // 上下键事件处理
+        const handleUpStart = () => {
           if (isSetting) {
             lastDirection = 'up';
             flashDisplay();
@@ -423,8 +419,7 @@
           }
         };
         
-        const handleDownStart = (e) => {
-          e.stopPropagation();
+        const handleDownStart = () => {
           if (isSetting) {
             lastDirection = 'down';
             flashDisplay();
@@ -435,7 +430,7 @@
         
         const handleMoveEnd = () => stopMovingArrow();
         
-        // 上下键鼠标事件
+        // 上下键 - 鼠标事件
         btnUp.addEventListener('mousedown', handleUpStart);
         btnUp.addEventListener('mouseup', handleMoveEnd);
         btnUp.addEventListener('mouseleave', handleMoveEnd);
@@ -444,87 +439,92 @@
         btnDown.addEventListener('mouseup', handleMoveEnd);
         btnDown.addEventListener('mouseleave', handleMoveEnd);
         
-        // 上下键触摸事件
+        // 上下键 - 触摸事件（修复：仅必要时阻止默认行为）
         btnUp.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          handleUpStart(e);
-        });
+          e.stopPropagation(); // 防止事件冒泡
+          handleUpStart();
+        }, { passive: true }); // 允许默认行为（避免触摸阻塞）
+        
         btnUp.addEventListener('touchend', (e) => {
-          e.preventDefault();
+          e.stopPropagation();
           handleMoveEnd();
         });
+        
         btnUp.addEventListener('touchcancel', (e) => {
-          e.preventDefault();
+          e.stopPropagation();
           handleMoveEnd();
         });
         
         btnDown.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          handleDownStart(e);
-        });
+          e.stopPropagation();
+          handleDownStart();
+        }, { passive: true });
+        
         btnDown.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          handleMoveEnd();
-        });
-        btnDown.addEventListener('touchcancel', (e) => {
-          e.preventDefault();
+          e.stopPropagation();
           handleMoveEnd();
         });
         
-        // M键单击事件（切换设置状态）
+        btnDown.addEventListener('touchcancel', (e) => {
+          e.stopPropagation();
+          handleMoveEnd();
+        });
+        
+        // M键 - 单击切换设置（鼠标+触摸共用）
         btnSet.addEventListener('click', () => {
           if (isMoving) return;
           isSetting = !isSetting;
           updateAllElements();
         });
         
-        // M键长按事件（核心修复：同时支持鼠标和触摸）
-        // 1. 鼠标长按
+        // M键 - 鼠标长按
         btnSet.addEventListener('mousedown', (e) => {
-          e.preventDefault(); // 阻止默认行为，避免与click冲突
+          e.stopPropagation();
           startLongPress();
         });
         
         btnSet.addEventListener('mouseup', (e) => {
-          e.preventDefault();
+          e.stopPropagation();
           endLongPress();
         });
         
         btnSet.addEventListener('mouseleave', (e) => {
-          e.preventDefault();
-          endLongPress(); // 鼠标移出按钮时结束长按
+          e.stopPropagation();
+          endLongPress();
         });
         
-        // 2. 触摸长按（保留并复用统一逻辑）
+        // M键 - 触摸长按（修复：允许默认行为）
         btnSet.addEventListener('touchstart', (e) => {
-          e.preventDefault();
+          e.stopPropagation();
           startLongPress();
-        });
+        }, { passive: true }); // 关键：passive模式避免触摸阻塞
         
         btnSet.addEventListener('touchend', (e) => {
-          e.preventDefault();
+          e.stopPropagation();
           endLongPress();
         });
         
         btnSet.addEventListener('touchcancel', (e) => {
-          e.preventDefault();
+          e.stopPropagation();
           endLongPress();
         });
         
-        // 数字键事件（与之前一致）
+        // 数字键事件
         buttons.forEach(btn => {
           const key = btn.dataset.btn;
           if (['1','2','3','4'].includes(key)) {
+            // 鼠标点击
             btn.addEventListener('click', handleNumberKey);
+            
+            // 触摸点击
             btn.addEventListener('touchstart', (e) => {
-              e.preventDefault();
+              e.stopPropagation();
               handleNumberKey(e);
-            });
+            }, { passive: true });
           }
         });
         
         function handleNumberKey(e) {
-          e.stopPropagation();
           if (isMoving) return;
           
           const currentHeight = pixelToHeight(
@@ -543,7 +543,7 @@
         }
       }
       
-      // 初始化（与之前一致）
+      // 初始化
       function init() {
         if (rulerContainer.offsetHeight > 0) {
           generateRuler();
