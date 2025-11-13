@@ -33,13 +33,12 @@
                shadow-inner flex items-center justify-center w-20 flex-shrink-0;
       }
       .control-bar {
-        @apply flex flex-wrap items-center gap-1.5 w-full; /* 关键：启用换行 */
+        @apply flex flex-wrap items-center gap-1.5 w-full;
         padding-bottom: 4px;
       }
       .control-buttons-group {
-        @apply flex items-center gap-1.5; /* 按钮组保持紧凑排列 */
+        @apply flex items-center gap-1.5;
       }
-      /* 其他样式保持与原始一致 */
       .workbench-container {
         @apply relative h-[28vh] min-h-[210px] w-full mb-3 overflow-hidden border border-gray-200 rounded-lg;
       }
@@ -120,15 +119,13 @@
       </div>
     </div>
     
-    <!-- 控制栏（核心调整：显示器单独占位，按钮组自动换行） -->
+    <!-- 控制栏 -->
     <div class="control-bar">
-      <!-- 数字显示器 -->
       <div class="display-panel">
         <span id="height-display">100.0</span>
         <span class="ml-1 text-xs">CM</span>
       </div>
       
-      <!-- 按钮组（会在显示器右侧自动排列，空间不足时换行） -->
       <div class="control-buttons-group">
         <div class="control-btn" id="btn-up" data-btn="up">
           <i class="fa fa-chevron-up"></i>
@@ -142,7 +139,7 @@
         <div class="control-btn" data-btn="3">3</div>
         <div class="control-btn" data-btn="4">4</div>
         
-        <div class="control-btn bg-neutral" data-btn="M">M</div>
+        <div class="control-btn bg-neutral" data-btn="M" id="btn-m">M</div>
       </div>
     </div>
     
@@ -164,8 +161,8 @@
   </div>
   
   <script>
-    // 脚本部分与之前完全一致（保证功能正常）
     document.addEventListener('DOMContentLoaded', () => {
+      // 核心参数（与之前一致）
       const minorStep = 2;                  
       const majorStep = 10;                 
       const majorLines = [130, 120, 110, 100, 90, 80, 70, 60]; 
@@ -180,6 +177,7 @@
       const totalHeightRange = majorLines[0] - majorLines[majorLines.length - 1];
       const totalMinorTicks = totalHeightRange / minorStep;
       
+      // DOM元素（与之前一致）
       const heightArrow = document.getElementById('height-arrow');
       const workbench = document.getElementById('workbench');
       const legLeft = document.getElementById('leg-left');
@@ -189,20 +187,23 @@
       const rulerContainer = document.getElementById('ruler-mark-container');
       const btnUp = document.getElementById('btn-up');
       const btnDown = document.getElementById('btn-down');
-      const btnSet = document.querySelector('[data-btn="M"]');
+      const btnSet = document.getElementById('btn-m'); // 明确绑定M键元素
       const buttons = document.querySelectorAll('[data-btn]');
       
       const savedHeights = {1: null, 2: null, 3: null, 4: null};
       let upperLimitArrow = null;
       let lowerLimitArrow = null;
       
+      // 状态变量（与之前一致）
       let isMoving = false;
       let movementInterval = null;
       let isSetting = false;
       let setKeyDownTime = 0; 
       let isLongPressing = false; 
       let lastDirection = null;
+      let longPressTimer = null; // 新增：长按计时器（统一管理鼠标和触摸）
       
+      // 计算/生成刻度等核心函数（与之前一致）
       function calculatePosition(height) {
         const rulerHeight = rulerContainer.offsetHeight;
         const availableHeight = rulerHeight * 0.8;
@@ -390,7 +391,28 @@
         }, 1000);
       }
       
+      // 统一的长按开始逻辑（同时支持鼠标和触摸）
+      function startLongPress() {
+        if (isSetting && !isMoving) {
+          isLongPressing = true;
+          // 2秒后检查是否仍在长按
+          longPressTimer = setTimeout(() => {
+            if (isLongPressing && isSetting) {
+              if (lastDirection === 'up') setUpperLimit();
+              else if (lastDirection === 'down') setLowerLimit();
+            }
+          }, 2000);
+        }
+      }
+      
+      // 统一的长按结束逻辑（同时支持鼠标和触摸）
+      function endLongPress() {
+        isLongPressing = false;
+        clearTimeout(longPressTimer); // 清除未执行的计时器
+      }
+      
       function bindEvents() {
+        // 上下键事件（与之前一致）
         const handleUpStart = (e) => {
           e.stopPropagation();
           if (isSetting) {
@@ -413,6 +435,7 @@
         
         const handleMoveEnd = () => stopMovingArrow();
         
+        // 上下键鼠标事件
         btnUp.addEventListener('mousedown', handleUpStart);
         btnUp.addEventListener('mouseup', handleMoveEnd);
         btnUp.addEventListener('mouseleave', handleMoveEnd);
@@ -421,6 +444,7 @@
         btnDown.addEventListener('mouseup', handleMoveEnd);
         btnDown.addEventListener('mouseleave', handleMoveEnd);
         
+        // 上下键触摸事件
         btnUp.addEventListener('touchstart', (e) => {
           e.preventDefault();
           handleUpStart(e);
@@ -447,34 +471,47 @@
           handleMoveEnd();
         });
         
+        // M键单击事件（切换设置状态）
         btnSet.addEventListener('click', () => {
           if (isMoving) return;
           isSetting = !isSetting;
           updateAllElements();
         });
         
+        // M键长按事件（核心修复：同时支持鼠标和触摸）
+        // 1. 鼠标长按
+        btnSet.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // 阻止默认行为，避免与click冲突
+          startLongPress();
+        });
+        
+        btnSet.addEventListener('mouseup', (e) => {
+          e.preventDefault();
+          endLongPress();
+        });
+        
+        btnSet.addEventListener('mouseleave', (e) => {
+          e.preventDefault();
+          endLongPress(); // 鼠标移出按钮时结束长按
+        });
+        
+        // 2. 触摸长按（保留并复用统一逻辑）
         btnSet.addEventListener('touchstart', (e) => {
-          if (isSetting && !isMoving) {
-            e.preventDefault();
-            setKeyDownTime = Date.now();
-            isLongPressing = true;
-            setTimeout(() => {
-              if (isLongPressing && isSetting) {
-                if (lastDirection === 'up') setUpperLimit();
-                else if (lastDirection === 'down') setLowerLimit();
-              }
-            }, 2000);
-          }
+          e.preventDefault();
+          startLongPress();
         });
         
-        btnSet.addEventListener('touchend', () => {
-          isLongPressing = false;
+        btnSet.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          endLongPress();
         });
         
-        btnSet.addEventListener('touchcancel', () => {
-          isLongPressing = false;
+        btnSet.addEventListener('touchcancel', (e) => {
+          e.preventDefault();
+          endLongPress();
         });
         
+        // 数字键事件（与之前一致）
         buttons.forEach(btn => {
           const key = btn.dataset.btn;
           if (['1','2','3','4'].includes(key)) {
@@ -506,6 +543,7 @@
         }
       }
       
+      // 初始化（与之前一致）
       function init() {
         if (rulerContainer.offsetHeight > 0) {
           generateRuler();
