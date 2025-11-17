@@ -129,12 +129,23 @@
     
     <!-- 控制栏 -->
     <div class="control-bar">
-      <div class="display-panel">
-        <span id="height-display">100.0</span>
-        <span class="ml-1 text-sm">CM</span>
+      <div class="flex items-center justify-between w-full">
+        <div class="display-panel">
+          <span id="height-display">100.0</span>
+          <span class="ml-1 text-sm">CM</span>
+        </div>
+        
+        <div class="flex space-x-1">
+          <div class="control-btn bg-red-600 text-xs" id="btn-resistance-minus">
+            -阻力
+          </div>
+          <div class="control-btn bg-green-600 text-xs" id="btn-resistance-plus">
+            +阻力
+          </div>
+        </div>
       </div>
       
-      <div class="control-buttons-group">
+      <div class="control-buttons-group mt-2">
         <div class="control-btn" id="btn-up" data-btn="up">
           <i class="fa fa-chevron-up"></i>
         </div>
@@ -169,6 +180,9 @@
         <li>长按↓键5秒：进入复位模式</li>
         <li>复位模式+↓键：退出复位模式</li>
         <li>复位模式+长按2键5秒：切换单位(cm/inch)</li>
+        <li>复位模式+长按↑键5秒：切换回退阻力(10/15/20kg)</li>
+        <li>-阻力：当前阻力-5kg（最小1kg）</li>
+        <li>+阻力：当前阻力+5kg（最大31kg）</li>
       </ul>
     </div>
     
@@ -225,6 +239,18 @@
       let isCmUnit = true; // true: cm, false: inch
       let downKeyLongPressTimer = null;
       let key2LongPressTimer = null;
+      let upKeyLongPressTimer = null;
+      
+      // 阻力相关变量
+      let backResistance = 10; // 回退阻力，初始值10
+      let currentResistance = 1; // 当前阻力，初始值1
+      let resistanceStates = [
+        { value: 10, display: "10.5" },
+        { value: 15, display: "10.6" },
+        { value: 20, display: "10.7" }
+      ];
+      let currentResistanceStateIndex = 0; // 默认使用第一个状态（10kg）
+      let resistanceTextElement = null; // 阻力文本元素
       
       // 检测设备类型
       function detectDeviceType() {
@@ -328,7 +354,7 @@
       }
       
       function moveArrow(direction) {
-        if (isMoving || isSetting) return;
+        if (isMoving || isSetting || isResetMode) return;
         isMoving = true;
         
         const rulerHeight = rulerContainer.offsetHeight;
@@ -339,10 +365,46 @@
         const maxPixel = calculatePosition(upperLimit);
         const minPixel = calculatePosition(lowerLimit);
         
+        // 检查是否需要显示阻力文本
+        checkResistanceText();
+        
         movementInterval = setInterval(() => {
           let currentTop = parseFloat(heightArrow.style.top) || calculatePosition(100.0);
+          let currentHeight = pixelToHeight(currentTop);
           
+          // 上升动画的阻力判断
           if (direction === 'up') {
+            // 检查是否接近99.9高度
+            if (currentHeight >= 99.8 && currentHeight <= 100.0) {
+              // 当回退阻力小于等于当前阻力时，触发回退
+              if (backResistance <= currentResistance) {
+                // 停止上升，开始下降
+                clearInterval(movementInterval);
+                
+                // 下降到95高度
+                const targetPixel = calculatePosition(95);
+                const backStep = (targetPixel - currentTop) / 50;
+                
+                const backInterval = setInterval(() => {
+                  currentTop = Math.min(targetPixel, currentTop + Math.abs(backStep));
+                  heightArrow.style.top = `${currentTop}px`;
+                  updateAllElements();
+                  
+                  if (Math.abs(currentTop - targetPixel) < 0.5) {
+                    heightArrow.style.top = `${targetPixel}px`;
+                    updateAllElements();
+                    clearInterval(backInterval);
+                    isMoving = false;
+                    
+                    // 移除阻力文本
+                    removeResistanceText();
+                  }
+                }, 20);
+                
+                return;
+              }
+            }
+            
             currentTop = Math.max(maxPixel, currentTop - step);
           } else {
             currentTop = Math.min(minPixel, currentTop + step);
@@ -351,6 +413,37 @@
           heightArrow.style.top = `${currentTop}px`;
           updateAllElements();
         }, 20);
+      }
+      
+      // 检查是否需要显示阻力文本
+      function checkResistanceText() {
+        // 只有当当前阻力大于1时才显示
+        if (currentResistance > 1) {
+          // 如果元素不存在，创建它
+          if (!resistanceTextElement) {
+            resistanceTextElement = document.createElement('div');
+            resistanceTextElement.className = 'absolute text-xs font-bold text-red-500 z-20 whitespace-nowrap';
+            // 向上移动一个箭头的位置（假设箭头高度约12px）
+            resistanceTextElement.style.top = `${calculatePosition(99.9) - 12}px`;
+            // 水平向右移动8个中文字符的距离（约75px）
+            resistanceTextElement.style.left = '75px';
+            rulerContainer.appendChild(resistanceTextElement);
+          }
+          
+          // 更新文本内容：添加黄色向下箭头
+          resistanceTextElement.innerHTML = `<i class="fa fa-arrow-down text-yellow-500 mr-1"></i>${currentResistance}kg`;
+        } else if (resistanceTextElement) {
+          // 如果当前阻力为1且元素存在，移除它
+          removeResistanceText();
+        }
+      }
+      
+      // 移除阻力文本
+      function removeResistanceText() {
+        if (resistanceTextElement) {
+          resistanceTextElement.remove();
+          resistanceTextElement = null;
+        }
       }
       
       function stopMovingArrow() {
@@ -551,7 +644,7 @@
         // 上下键事件处理
         const handleUpStart = () => {
           if (isResetMode) {
-            // 在复位模式下，上键无效
+            // 在复位模式下，上键用于切换回退阻力
             return;
           }
           
@@ -561,6 +654,45 @@
           } else {
             moveArrow('up');
           }
+        };
+        
+        // 处理上键长按切换回退阻力
+        const handleUpLongPressStart = () => {
+          if (!isResetMode) return;
+          
+          // 使用interval而不是timeout，以便在长按过程中检测是否超过5秒
+          upKeyLongPressTimer = setInterval(() => {
+            // 如果已经退出复位模式，停止检测
+            if (!isResetMode) {
+              clearInterval(upKeyLongPressTimer);
+              return;
+            }
+            
+            // 切换到下一个阻力状态
+            currentResistanceStateIndex = (currentResistanceStateIndex + 1) % resistanceStates.length;
+            const newState = resistanceStates[currentResistanceStateIndex];
+            
+            // 更新回退阻力
+            backResistance = newState.value;
+            
+            // 显示对应文本
+            heightDisplay.textContent = newState.display;
+            displayUnit.textContent = '';
+            
+            // 1秒后退出复位模式
+            setTimeout(() => {
+              isResetMode = false;
+              updateAllElements();
+              clearInterval(upKeyLongPressTimer);
+            }, 1000);
+            
+            // 只执行一次，所以清除interval
+            clearInterval(upKeyLongPressTimer);
+          }, 5000); // 5秒后执行
+        };
+        
+        const handleUpLongPressEnd = () => {
+          clearInterval(upKeyLongPressTimer);
         };
         
         const handleDownStart = () => {
@@ -614,9 +746,20 @@
         const handleMoveEnd = () => stopMovingArrow();
         
         // 上下键 - 鼠标事件
-        btnUp.addEventListener('mousedown', handleUpStart);
-        btnUp.addEventListener('mouseup', handleMoveEnd);
-        btnUp.addEventListener('mouseleave', handleMoveEnd);
+        btnUp.addEventListener('mousedown', (e) => {
+          handleUpStart(e);
+          if (isResetMode) {
+            handleUpLongPressStart();
+          }
+        });
+        btnUp.addEventListener('mouseup', (e) => {
+          handleMoveEnd(e);
+          handleUpLongPressEnd();
+        });
+        btnUp.addEventListener('mouseleave', (e) => {
+          handleMoveEnd(e);
+          handleUpLongPressEnd();
+        });
         
         btnDown.addEventListener('mousedown', (e) => {
           handleDownStart(e);
@@ -633,15 +776,24 @@
         
         // 上下键 - 触摸事件
         btnUp.addEventListener('touchstart', (e) => {
-          handleTouchStart(e, handleUpStart);
+          handleTouchStart(e, () => {
+            handleUpStart();
+            if (isResetMode) {
+              handleUpLongPressStart();
+            }
+          });
         }, { passive: false });
         
         btnUp.addEventListener('touchend', (e) => {
-          handleTouchEnd(e, null, handleMoveEnd);
+          handleTouchEnd(e, null, () => {
+            handleMoveEnd();
+            handleUpLongPressEnd();
+          });
         }, { passive: false });
         
         btnUp.addEventListener('touchcancel', (e) => {
           handleMoveEnd();
+          handleUpLongPressEnd();
         }, { passive: false });
         
         btnDown.addEventListener('touchstart', (e) => {
@@ -817,9 +969,80 @@
           updateAllElements();
           updateLimitArrows();
           bindEvents();
+          bindResistanceButtons();
         } else {
           setTimeout(init, 50);
         }
+      }
+      
+      // 绑定阻力控制按钮事件
+      function bindResistanceButtons() {
+        const btnResistanceMinus = document.getElementById('btn-resistance-minus');
+        const btnResistancePlus = document.getElementById('btn-resistance-plus');
+        
+        // 更新阻力显示
+        function updateResistanceDisplay() {
+          // 检查是否需要显示阻力文本
+          checkResistanceText();
+        }
+        
+        // 减阻力按钮
+        btnResistanceMinus.addEventListener('click', () => {
+          if (isMoving || isSetting || isResetMode) return;
+          
+          const newResistance = currentResistance - 5;
+          if (newResistance >= 1) {
+            currentResistance = newResistance;
+            updateResistanceDisplay();
+          }
+        });
+        
+        // 加阻力按钮
+        btnResistancePlus.addEventListener('click', () => {
+          if (isMoving || isSetting || isResetMode) return;
+          
+          const newResistance = currentResistance + 5;
+          if (newResistance <= 31) {
+            currentResistance = newResistance;
+            updateResistanceDisplay();
+          }
+        });
+        
+        // 触摸事件
+        btnResistanceMinus.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          addTouchFeedback(btnResistanceMinus);
+        }, { passive: false });
+        
+        btnResistanceMinus.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          if (isMoving || isSetting || isResetMode) return;
+          
+          const newResistance = currentResistance - 5;
+          if (newResistance >= 1) {
+            currentResistance = newResistance;
+            updateResistanceDisplay();
+          }
+        }, { passive: false });
+        
+        btnResistancePlus.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          addTouchFeedback(btnResistancePlus);
+        }, { passive: false });
+        
+        btnResistancePlus.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          if (isMoving || isSetting || isResetMode) return;
+          
+          const newResistance = currentResistance + 5;
+          if (newResistance <= 31) {
+            currentResistance = newResistance;
+            updateResistanceDisplay();
+          }
+        }, { passive: false });
+        
+        // 初始化显示
+        updateResistanceDisplay();
       }
       
       init();
