@@ -24,23 +24,24 @@
   <style type="text/tailwindcss">
     @layer utilities {
       .control-btn {
-        @apply w-10 h-10 rounded-lg bg-dark text-white text-sm font-bold 
+        @apply w-12 h-12 rounded-lg bg-dark text-white text-base font-bold 
                flex items-center justify-center cursor-pointer transition-all 
-               duration-200 hover:bg-primary active:scale-95 flex-shrink-0;
+               duration-200 hover:bg-primary active:scale-95 flex-shrink-0
+               touch-manipulation select-none;
       }
       .display-panel {
-        @apply bg-dark text-[#00FF9D] rounded-lg p-2 font-mono text-lg 
-               shadow-inner flex items-center justify-center w-20 flex-shrink-0;
+        @apply bg-dark text-[#00FF9D] rounded-lg p-3 font-mono text-xl 
+               shadow-inner flex items-center justify-center w-24 flex-shrink-0;
       }
       .control-bar {
-        @apply flex flex-wrap items-center gap-1.5 w-full;
-        padding-bottom: 4px;
+        @apply flex flex-wrap items-center gap-2 w-full;
+        padding-bottom: 6px;
       }
       .control-buttons-group {
-        @apply flex items-center gap-1.5;
+        @apply flex items-center gap-2;
       }
       .workbench-container {
-        @apply relative h-[28vh] min-h-[210px] w-full mb-3 overflow-hidden border border-gray-200 rounded-lg;
+        @apply relative h-[28vh] min-h-[210px] w-full mb-4 overflow-hidden border border-gray-200 rounded-lg;
       }
       .ruler-wrapper {
         @apply absolute left-0 top-0 h-full w-16 border-r border-gray-200;
@@ -94,15 +95,22 @@
       .bottom-reserve {
         @apply min-h-[120px] w-full;
       }
+      /* 触摸反馈样式 */
+      .touch-active {
+        @apply scale-95 bg-primary;
+      }
+      .long-press-progress {
+        @apply absolute inset-0 rounded-lg bg-primary opacity-0 transition-opacity duration-1000;
+      }
     }
   </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-start p-3">
-  <div class="w-full max-w-md bg-white rounded-xl shadow-lg p-3">
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-start p-3 touch-manipulation select-none">
+  <div class="w-full max-w-md bg-white rounded-xl shadow-lg p-4">
     <!-- 标题区域 -->
-    <div class="text-center bg-primary text-white p-2 rounded-lg mb-3">
-      <h1 class="text-base font-bold">升降工作台控制系统</h1>
-      <p class="text-xs text-blue-100">高度范围: 65~120CM</p>
+    <div class="text-center bg-primary text-white p-3 rounded-lg mb-4">
+      <h1 class="text-lg font-bold">升降工作台控制系统</h1>
+      <p class="text-sm text-blue-100">高度范围: 65~120CM</p>
     </div>
     
     <!-- 工作台显示区域 -->
@@ -123,7 +131,7 @@
     <div class="control-bar">
       <div class="display-panel">
         <span id="height-display">100.0</span>
-        <span class="ml-1 text-xs">CM</span>
+        <span class="ml-1 text-sm">CM</span>
       </div>
       
       <div class="control-buttons-group">
@@ -139,14 +147,17 @@
         <div class="control-btn" data-btn="3">3</div>
         <div class="control-btn" data-btn="4">4</div>
         
-        <div class="control-btn bg-neutral" data-btn="M" id="btn-m">M</div>
+        <div class="control-btn bg-neutral relative" data-btn="M" id="btn-m">
+          M
+          <div class="long-press-progress" id="long-press-progress"></div>
+        </div>
       </div>
     </div>
     
     <div class="button-spacer"></div>
     
     <!-- 操作说明 -->
-    <div class="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg">
+    <div class="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg">
       <p class="font-medium mb-1">操作说明：</p>
       <ul class="list-disc list-inside space-y-0.5">
         <li>↑：工作台上升</li>
@@ -188,6 +199,7 @@
       const btnUp = document.getElementById('btn-up');
       const btnDown = document.getElementById('btn-down');
       const btnSet = document.getElementById('btn-m');
+      const longPressProgress = document.getElementById('long-press-progress');
       const buttons = document.querySelectorAll('[data-btn]');
       
       const savedHeights = {1: null, 2: null, 3: null, 4: null};
@@ -201,10 +213,20 @@
       let isLongPressing = false; 
       let lastDirection = null;
       let longPressTimer = null;
-      // 新增：区分设备类型（用于事件处理适配）
-      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchStartTime = 0;
+      let isTouchDevice = false;
       
-      // 核心计算函数（与之前一致）
+      // 检测设备类型
+      function detectDeviceType() {
+        isTouchDevice = 'ontouchstart' in window || 
+                       navigator.maxTouchPoints > 0 || 
+                       navigator.msMaxTouchPoints > 0;
+        return isTouchDevice;
+      }
+      
+      // 核心计算函数
       function calculatePosition(height) {
         const rulerHeight = rulerContainer.offsetHeight;
         const availableHeight = rulerHeight * 0.8;
@@ -392,11 +414,22 @@
         }, 1000);
       }
       
-      // 统一长按逻辑
+      // 长按逻辑
       function startLongPress() {
         if (isSetting && !isMoving) {
           isLongPressing = true;
-          // 触摸设备缩短长按检测时间（优化手机体验）
+          // 显示长按进度指示器
+          if (longPressProgress) {
+            longPressProgress.style.opacity = '0';
+            longPressProgress.style.transition = 'opacity 1500ms';
+            setTimeout(() => {
+              if (isLongPressing) {
+                longPressProgress.style.opacity = '0.5';
+              }
+            }, 10);
+          }
+          
+          // 触摸设备缩短长按检测时间
           const delay = isTouchDevice ? 1500 : 2000;
           longPressTimer = setTimeout(() => {
             if (isLongPressing && isSetting) {
@@ -410,9 +443,68 @@
       function endLongPress() {
         isLongPressing = false;
         clearTimeout(longPressTimer);
+        // 隐藏长按进度指示器
+        if (longPressProgress) {
+          longPressProgress.style.opacity = '0';
+        }
+      }
+      
+      // 触摸反馈
+      function addTouchFeedback(element) {
+        element.classList.add('touch-active');
+        setTimeout(() => {
+          element.classList.remove('touch-active');
+        }, 200);
+      }
+      
+      // 处理触摸事件
+      function handleTouchStart(e, callback) {
+        // 阻止默认行为以防止滚动和缩放
+        e.preventDefault();
+        
+        // 记录触摸起始位置和时间
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+        
+        // 添加触摸反馈
+        const target = e.currentTarget;
+        addTouchFeedback(target);
+        
+        // 执行回调
+        if (callback) callback();
+      }
+      
+      function handleTouchEnd(e, startCallback, endCallback) {
+        // 阻止默认行为
+        e.preventDefault();
+        
+        // 计算触摸持续时间
+        const touchDuration = Date.now() - touchStartTime;
+        
+        // 执行结束回调
+        if (endCallback) endCallback();
+        
+        // 如果触摸时间很短，可能是误触，不执行操作
+        if (touchDuration < 50) return;
+        
+        // 计算触摸移动距离
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = Math.abs(touchEndX - touchStartX);
+        const deltaY = Math.abs(touchEndY - touchStartY);
+        
+        // 如果移动距离很小，视为点击
+        if (deltaX < 10 && deltaY < 10) {
+          // 模拟点击事件
+          e.currentTarget.click();
+        }
       }
       
       function bindEvents() {
+        // 检测设备类型
+        detectDeviceType();
+        
         // 上下键事件处理
         const handleUpStart = () => {
           if (isSetting) {
@@ -443,79 +535,65 @@
         btnDown.addEventListener('mouseup', handleMoveEnd);
         btnDown.addEventListener('mouseleave', handleMoveEnd);
         
-        // 上下键 - 触摸事件（针对手机优化）
+        // 上下键 - 触摸事件
         btnUp.addEventListener('touchstart', (e) => {
-          // 触摸设备不阻止默认行为，仅防止冒泡
-          e.stopPropagation();
-          handleUpStart();
-        });
+          handleTouchStart(e, handleUpStart);
+        }, { passive: false });
         
         btnUp.addEventListener('touchend', (e) => {
-          e.stopPropagation();
-          handleMoveEnd();
-        });
+          handleTouchEnd(e, null, handleMoveEnd);
+        }, { passive: false });
         
         btnUp.addEventListener('touchcancel', (e) => {
-          e.stopPropagation();
           handleMoveEnd();
-        });
+        }, { passive: false });
         
         btnDown.addEventListener('touchstart', (e) => {
-          e.stopPropagation();
-          handleDownStart();
-        });
+          handleTouchStart(e, handleDownStart);
+        }, { passive: false });
         
         btnDown.addEventListener('touchend', (e) => {
-          e.stopPropagation();
-          handleMoveEnd();
-        });
+          handleTouchEnd(e, null, handleMoveEnd);
+        }, { passive: false });
         
         btnDown.addEventListener('touchcancel', (e) => {
-          e.stopPropagation();
           handleMoveEnd();
-        });
+        }, { passive: false });
         
-        // M键 - 单击切换设置（共享事件，触摸和鼠标都通过click触发）
+        // M键 - 单击切换设置
         btnSet.addEventListener('click', () => {
           if (isMoving) return;
           isSetting = !isSetting;
           updateAllElements();
         });
         
-        // M键 - 长按处理（区分设备绑定）
-        if (isTouchDevice) {
-          // 触摸设备：使用touch事件
-          btnSet.addEventListener('touchstart', (e) => {
-            e.stopPropagation(); // 防止与click冲突
-            startLongPress();
-          });
-          
-          btnSet.addEventListener('touchend', (e) => {
-            e.stopPropagation();
-            endLongPress();
-          });
-          
-          btnSet.addEventListener('touchcancel', (e) => {
-            e.stopPropagation();
-            endLongPress();
-          });
-        } else {
-          // 非触摸设备（PC）：使用鼠标事件
-          btnSet.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-            startLongPress();
-          });
-          
-          btnSet.addEventListener('mouseup', (e) => {
-            e.stopPropagation();
-            endLongPress();
-          });
-          
-          btnSet.addEventListener('mouseleave', (e) => {
-            e.stopPropagation();
-            endLongPress();
-          });
-        }
+        // M键 - 长按处理
+        btnSet.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          startLongPress();
+        });
+        
+        btnSet.addEventListener('mouseup', (e) => {
+          e.preventDefault();
+          endLongPress();
+        });
+        
+        btnSet.addEventListener('mouseleave', (e) => {
+          endLongPress();
+        });
+        
+        // M键 - 触摸事件
+        btnSet.addEventListener('touchstart', (e) => {
+          handleTouchStart(e, startLongPress);
+        }, { passive: false });
+        
+        btnSet.addEventListener('touchend', (e) => {
+          handleTouchEnd(e, null, endLongPress);
+        }, { passive: false });
+        
+        btnSet.addEventListener('touchcancel', (e) => {
+          endLongPress();
+        }, { passive: false });
         
         // 数字键事件
         buttons.forEach(btn => {
@@ -526,10 +604,15 @@
             
             // 触摸点击
             btn.addEventListener('touchstart', (e) => {
-              e.stopPropagation();
-              // 触摸时手动触发click（确保逻辑一致）
-              btn.click();
-            });
+              handleTouchStart(e);
+            }, { passive: false });
+            
+            btn.addEventListener('touchend', (e) => {
+              handleTouchEnd(e, null, () => {
+                // 触摸结束时触发点击
+                handleNumberKey({currentTarget: btn});
+              });
+            }, { passive: false });
           }
         });
         
@@ -550,6 +633,11 @@
             moveToTarget(savedHeights[e.currentTarget.dataset.btn]);
           }
         }
+        
+        // 防止页面滚动
+        document.addEventListener('touchmove', (e) => {
+          e.preventDefault();
+        }, { passive: false });
       }
       
       // 初始化
